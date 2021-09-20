@@ -9,6 +9,24 @@ from log import log
 
 USERS = {}
 
+USER_INFO_TEMPLATE = {
+    "money": None,
+    "real_wallet": None,
+    "bet_sum": None,
+    "option": None,
+    "profit_perсents": None,
+    "profit_sum": None,
+    "time": None,
+}
+
+ACTIVE_BET_TEMPLATE = {
+    "timer": None,
+    "profit_sum": None,
+    "profit_perсents": None,
+    "bet_sum": None,
+    "option": None,
+}
+
 
 class Whitelist:
     wl = set(ADMINISTRATORS.copy())
@@ -46,9 +64,6 @@ class User:
         self.id = user_id
         if os.path.isfile(USERS_PATH + '%d.pkl' % user_id):
             self.load(user_id)
-
-    def get_base_info(self):
-        return {self.id, self.login, self.password, self.autobet_params}
 
     def dump(self):
         with open(USERS_PATH + '%d.pkl' % self.id, 'wb') as f:
