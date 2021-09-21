@@ -10,8 +10,8 @@ from aiogram.utils import executor
 
 # import settings
 from config import TOKEN, WELCOME_MESSAGE
-from user import Whitelist, USERS, USER_INFO_TEMPLATE, ACTIVE_BET_TEMPLATE
-from binarium import Binarium
+from user import Whitelist, USERS
+from binarium import Binarium, autobet_inspector, prepare_info_message, prepare_bets_message
 
 # MAIN VARIABLES
 # My ID is 971299290
@@ -20,34 +20,48 @@ bot = Bot(token)
 dp = Dispatcher(bot)
 
 
-def prepare_info_message(result):
-    msg = '=' * 30 + '\n'
-    msg += "money:{0}\n".format(result['money'])
-    msg += "real_wallet:{0}\n".format(result['real_wallet'])
-    msg += "bet_sum:{0}\n".format(result['bet_sum'])
-    msg += "profit_perсents:{0}\n".format(result['profit_perсents'])
-    msg += "profit_sum:{0}\n".format(result['profit_sum'])
-    msg += "time:{0}\n".format(result['time'])
-    if len(msg) == 0:
-        msg = 'No Info'
-    return msg
+@dp.message_handler(commands=['autobet_sum'])
+async def set_autobet_sum(message):
+    msg = str(message.text).replace('/autobet_sum', '').replace(' ', '')
+    try:
+        float(msg)
+        USERS[message.from_user.id].autobet_params['bet_sum'] = msg
+        msg = "Set Autobet sum: {0}".format(msg)
+    except ValueError:
+        msg = "Input correct value(ex. 60.0, 120) and try again"
+    await bot.send_message(message.from_user.id, msg)
+    pass
 
 
-def prepare_bets_message(result):
-    msg = ''
-    bet_num = int(0)
-    for key in result.keys():
-        print(key, result[key])
-        bet_num += 1
-        msg += '{:=^30}\n'.format("Active bet №{0}".format(bet_num))
-        msg += 'Option: {0}\n'.format(result[key]['option'])
-        msg += 'expiration time: {0}\n'.format(result[key]['timer'])
-        msg += 'Sum of bet: {0}\n'.format(result[key]['profit_perсents'])
-        msg += 'Profit sum: {0}\n'.format(result[key]['profit_sum'])
-        msg += 'Profit percents: {0}\n'.format(result[key]['profit_perсents'])
-    if len(msg) == 0:
-        msg = 'No Active bets'
-    return msg
+@dp.message_handler(commands=['autobet_wallet'])
+async def set_autobet_wallet(message):
+    user_id = message.from_user.id
+    wallet = USERS[user_id].autobet_params['real_wallet']
+    USERS[user_id].autobet_params['real_wallet'] = not wallet
+    await bot.send_message(message.from_user.id, "Choosed {0} wallet".format(
+        "Real" if USERS[user_id].autobet_params['real_wallet']
+        else "Demo"))
+    pass
+
+
+@dp.message_handler(commands=['autobet'])
+async def command_autobet(message):
+    msg = str(message.text).replace('/autobet ', '')
+    data = msg.split()
+    option = exp_time = direction = str()
+    bm = Binarium()
+    for elem in data:
+        if bm.is_option(elem):
+            option = elem
+        elif bm.is_time(elem):
+            exp_time = elem
+        elif bm.is_direction(elem):
+            direction = elem
+    print(option, exp_time, direction)
+    if option and exp_time and direction:
+        bm.add_autobet(message.from_user.id, option, exp_time, direction)
+    await bot.send_message(message.from_user.id, msg)
+    pass
 
 
 @dp.message_handler(commands=['get_id'])
@@ -69,18 +83,20 @@ async def access_denied(message):
 
 @dp.message_handler(commands=['login'])
 async def set_login(message):
-    msg = str(message.text).replace('/login ', '')
-    await bot.send_message(message.from_user.id, "Login: " + msg)
-    USERS[message.from_user.id].login = msg
+    msg = str(message.text).replace('/login', '').replace(' ', '')
+    if msg:
+        USERS[message.from_user.id].login = msg
+    await bot.send_message(message.from_user.id, "Login: {0}".format(msg) if msg else "Forgot login...")
     pass
 
 
 @dp.message_handler(commands=['pass'])
 async def set_password(message):
-    msg = str(message.text).replace('/pass ', '')
+    msg = str(message.text).replace('/pass', '').replace(' ', '')
     USERS[message.from_user.id].password = msg
-    USERS[message.from_user.id].dump()
-    await bot.send_message(message.from_user.id, "Password: " + msg)
+    if len(USERS[message.from_user.id].login) > 0 and len(USERS[message.from_user.id].password) > 0:
+        USERS[message.from_user.id].dump()
+    await bot.send_message(message.from_user.id, "Password: {0}".format(msg) if msg else "Forgot pass...")
     pass
 
 
@@ -91,13 +107,21 @@ async def command_connect(message):
     bm = Binarium()
     ans = "Connected successfully!"
     try:
-        USERS[message.from_user.id].webdriver = bm.connect(
-            login=USERS[message.from_user.id].login,
-            password=USERS[message.from_user.id].password)
-        USERS[message.from_user.id].connected = True
+        USERS[message.from_user.id].connected = bm.connect(message.from_user.id)
     except Exception as e:
         ans = e
     await bot.send_message(message.from_user.id, ans)
+    pass
+
+
+@dp.message_handler(lambda message: not USERS[message.from_user.id].connected)
+async def info_message(message):
+    ans = ''
+    if USERS[message.from_user.id].login:
+        ans += "Login:" + USERS[message.from_user.id].login
+    if USERS[message.from_user.id].password:
+        ans += "\nPass:" + USERS[message.from_user.id].password
+    await bot.send_message(message.from_user.id, ans if len(ans) > 0 else "Input /login <login> and /pass <pass>")
     pass
 
 
@@ -160,10 +184,9 @@ async def set_sum(message):
 async def do_bet(message):
     bm = Binarium()
     msg = str(message.text).replace('/bet ', '')
-    up = msg.lower().find('верх') != -1 and msg.lower().find('вниз') == -1
-    print("Bet {0}".format("Up" if up else "Down"))
-    bm.bet(USERS[message.from_user.id].webdriver, up)
-    await bot.send_message(message.from_user.id, msg)
+    bm.bet(USERS[message.from_user.id].webdriver, msg)
+    print("Bet {0}".format(msg))
+    await bot.send_message(message.from_user.id, "Bet {0}".format(msg))
     pass
 
 
@@ -183,16 +206,6 @@ async def get_active_bets(message):
     pass
 
 
-@dp.message_handler(lambda message: message.from_user.id in USERS)
-async def info_message(message):
-    ans = ''
-    if USERS[message.from_user.id].login:
-        ans += "Login:" + USERS[message.from_user.id].login
-    if USERS[message.from_user.id].password:
-        ans += "\nPass:" + USERS[message.from_user.id].password
-    await bot.send_message(message.from_user.id, ans if len(ans) > 0 else "Input /login and /pass")
-    pass
-
-
 if __name__ == '__main__':
+    asyncio.get_event_loop().create_task(autobet_inspector(bot))
     executor.start_polling(dp, skip_updates=True)

@@ -19,14 +19,6 @@ USER_INFO_TEMPLATE = {
     "time": None,
 }
 
-ACTIVE_BET_TEMPLATE = {
-    "timer": None,
-    "profit_sum": None,
-    "profit_perсents": None,
-    "bet_sum": None,
-    "option": None,
-}
-
 
 class Whitelist:
     wl = set(ADMINISTRATORS.copy())
@@ -53,7 +45,7 @@ class User:
     id = None
     login = None
     password = None
-    autobet_params = {'sum': None, 'real_wallet': False}
+    autobet_params = {'bet_sum': '60.0', 'real_wallet': False}
 
     # additional info
     webdriver = None

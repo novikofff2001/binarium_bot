@@ -1,6 +1,9 @@
-from config import URL, WEBDRIVER_PATH, ALL_OPTIONS_PATH, ALL_TIMES_PATH, ALL_BANNERS_PATH
+import asyncio
+import datetime
+
+from config import WEBDRIVER_PATH, ALL_OPTIONS_PATH, ALL_TIMES_PATH, ALL_BANNERS_PATH
 from log import log
-from user import USER_INFO_TEMPLATE, ACTIVE_BET_TEMPLATE
+from user import USERS, USER_INFO_TEMPLATE
 #
 from selenium.common.exceptions import TimeoutException
 from selenium.common.exceptions import NoSuchElementException
@@ -10,18 +13,63 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.options import Options
 from selenium import webdriver
 import time
 
+URL = 'https://binarium.global'
 BROWSER_TIMEOUT = 6  # seconds
 WAIT_TIMEOUT = 3  # seconds
-ALL_OPTIONS = [elem.replace('\n', '') for elem in open(ALL_OPTIONS_PATH, 'r')]
-ALL_TIMES = [elem.replace('\n', '') for elem in open(ALL_TIMES_PATH, 'r')]
+
+
+ACTIVE_BET_TEMPLATE = {
+    "timer": None,
+    "profit_sum": None,
+    "profit_perсents": None,
+    "bet_sum": None,
+    "option": None,
+}
+
+AUTOBET_TEMPLATE = {'signal_time': None,
+                    'option': None,
+                    'exp_time': None,
+                    'direction': None}
+
+AUTOBET_QUEUE = {}
+
+def prepare_info_message(result):
+    msg = '=' * 30 + '\n'
+    msg += "money:{0}\n".format(result['money'])
+    msg += "real_wallet:{0}\n".format(result['real_wallet'])
+    msg += "bet_sum:{0}\n".format(result['bet_sum'])
+    msg += "profit_perсents:{0}\n".format(result['profit_perсents'])
+    msg += "profit_sum:{0}\n".format(result['profit_sum'])
+    msg += "time:{0}\n".format(result['time'])
+    if len(msg) == 0:
+        msg = 'No Info'
+    return msg
+
+
+def prepare_bets_message(result):
+    msg = ''
+    bet_num = int(0)
+    for key in result.keys():
+        print(key, result[key])
+        bet_num += 1
+        msg += '{:=^30}\n'.format("Active bet №{0}".format(bet_num))
+        msg += 'Option: {0}\n'.format(result[key]['option'])
+        msg += 'expiration time: {0}\n'.format(result[key]['timer'])
+        msg += 'Sum of bet: {0}\n'.format(result[key]['bet_sum'])
+        msg += 'Profit sum: {0}\n'.format(result[key]['profit_sum'])
+        msg += 'Profit percents: {0}\n'.format(result[key]['profit_perсents'])
+    if len(msg) == 0:
+        msg = 'No Active bets'
+    return msg
 
 
 class Binarium:
     BANNERS_PATH = [elem.replace('\n', '') for elem in open(ALL_BANNERS_PATH, 'r')]
+    ALL_OPTIONS = [elem.replace('\n', '') for elem in open(ALL_OPTIONS_PATH, 'r')]
+    ALL_TIMES = [elem.replace('\n', '') for elem in open(ALL_TIMES_PATH, 'r')]
 
     def wait(self, driver, search_method, name, timeout=WAIT_TIMEOUT):
         try:
@@ -31,39 +79,49 @@ class Binarium:
         except TimeoutException:
             return 0
 
-    def connect(self, login, password):
+    def connect(self, user_id):
+        assert USERS[user_id].login and USERS[user_id].password
         driver = webdriver.Chrome(WEBDRIVER_PATH)
         driver.get(URL)
 
+        connected = 1
         MAIN_WINDOW_PATH = 'cmp-nav-logo'
         if not self.wait(driver, By.CLASS_NAME, MAIN_WINDOW_PATH, BROWSER_TIMEOUT):
-            raise Exception("Error! Page not loaded!")
+            connected = 0
 
         # Go to login form
         LOGIN_FORM_PATH = "//button[text()='Войти']"
-        if not self.wait(driver, By.XPATH, LOGIN_FORM_PATH, BROWSER_TIMEOUT):
-            raise Exception("Error! Login button not found!")
-        driver.find_element_by_xpath(LOGIN_FORM_PATH).click()
+        if self.wait(driver, By.XPATH, LOGIN_FORM_PATH, BROWSER_TIMEOUT):
+            driver.find_element_by_xpath(LOGIN_FORM_PATH).click()
+        else:
+            connected = 0
 
         # login input
         LOGIN_FIELD_PATH = "//input[@formcontrolname='email']"
-        if not self.wait(driver, By.XPATH, LOGIN_FIELD_PATH, BROWSER_TIMEOUT):
-            raise Exception("Error! Login field not found!")
-        driver.find_element_by_xpath(LOGIN_FIELD_PATH).send_keys(login)
+        if self.wait(driver, By.XPATH, LOGIN_FIELD_PATH, BROWSER_TIMEOUT):
+            driver.find_element_by_xpath(LOGIN_FIELD_PATH).send_keys(USERS[user_id].login)
+        else:
+            connected = 0
 
         # password input
         PASSWORD_FIELD_PATH = "//input[@formcontrolname='password']"
-        if not self.wait(driver, By.XPATH, PASSWORD_FIELD_PATH, BROWSER_TIMEOUT):
-            raise Exception("Error! Password field not found!")
-        driver.find_element_by_xpath(PASSWORD_FIELD_PATH).send_keys(password)
+        if self.wait(driver, By.XPATH, PASSWORD_FIELD_PATH, BROWSER_TIMEOUT):
+            driver.find_element_by_xpath(PASSWORD_FIELD_PATH).send_keys(USERS[user_id].password)
+        else:
+            connected = 0
 
         # Enter click
         ENTER_BUTTON_PATH = "//button[@class='c-button ng-star-inserted']"
-        if not self.wait(driver, By.XPATH, ENTER_BUTTON_PATH, BROWSER_TIMEOUT):
-            raise Exception("Error! Enter button not found!")
-        driver.find_element_by_xpath(ENTER_BUTTON_PATH).click()
+        if self.wait(driver, By.XPATH, ENTER_BUTTON_PATH, BROWSER_TIMEOUT):
+            driver.find_element_by_xpath(ENTER_BUTTON_PATH).click()
+        else:
+            connected = 0
 
-        return driver
+        if connected:
+            USERS[user_id].webdriver = driver
+        else:
+            driver.quit()
+        return connected
 
     def close_banners(self, driver):
         for elem in self.BANNERS_PATH:
@@ -93,16 +151,12 @@ class Binarium:
                     return 1
             except ElementClickInterceptedException:
                 self.close_banners(driver)
-        #                webdriver.find_element_by_class_name(CHART_TAB_PATH).click()
         return 0
 
     def change_wallet(self, driver, real_wallet=False):
-        try:
-            CURRENT_WALLET = "//div[text()='{0}']".format("Реальный" if real_wallet else "Демосчет")
-            driver.find_element_by_xpath(CURRENT_WALLET)
+        CURRENT_WALLET = "//div[text()='{0}']".format("Реальный" if real_wallet else "Демосчет")
+        if self.wait(driver, By.XPATH, CURRENT_WALLET):
             return 1
-        except NoSuchElementException:
-            None
         #
         WALLET_BAR_PATH = "//div[@a-test='fullBalance']"
         WALLET_PATH = "//div[@a-test='{0}BalanceSum']".format("real" if real_wallet else "demo")
@@ -110,7 +164,8 @@ class Binarium:
             try:
                 if self.wait(driver, By.XPATH, WALLET_BAR_PATH):
                     driver.find_element_by_xpath(WALLET_BAR_PATH).click()
-                driver.find_element_by_xpath(WALLET_PATH).click()
+                if self.wait(driver, By.XPATH, WALLET_PATH):
+                    driver.find_element_by_xpath(WALLET_PATH).click()
                 return 1
             except ElementClickInterceptedException:
                 self.close_banners(driver)
@@ -156,11 +211,17 @@ class Binarium:
                 self.close_banners(driver)
         return 0
 
-    def bet(self, driver, up):
+    def bet(self, driver, msg=str()):
+        is_up = msg.lower().find('верх') != -1 and msg.lower().find('вниз') == -1
         DOWN_BUTTON_PATH = "//div[@atest='buttonPut']"
         UP_BUTTON_PATH = "//div[@atest='buttonCall']"
-        driver.find_element_by_xpath(UP_BUTTON_PATH if up else DOWN_BUTTON_PATH).click()
-        pass
+        for _ in range(2):
+            try:
+                driver.find_element_by_xpath(UP_BUTTON_PATH if is_up else DOWN_BUTTON_PATH).click()
+                return 1
+            except ElementClickInterceptedException:
+                self.close_banners(driver)
+        return 0
 
     def collect_info(self, driver):
         result = USER_INFO_TEMPLATE.copy()
@@ -203,18 +264,78 @@ class Binarium:
         bet_num = int(1)
         result = {}
         HISTORY_BUTTON_PATH = "mm-button"
-        if not self.wait(driver, By.CLASS_NAME, HISTORY_BUTTON_PATH):
-            return result
-        driver.find_element_by_class_name(HISTORY_BUTTON_PATH).click()
+        for _ in range(2):
+            try:
+                if self.wait(driver, By.CLASS_NAME, HISTORY_BUTTON_PATH):
+                    driver.find_element_by_class_name(HISTORY_BUTTON_PATH).click()
+                    break
+                else:
+                    return result
+            except ElementClickInterceptedException:
+                self.close_banners(driver)
+
         if self.wait(driver, By.CLASS_NAME, "open-options-list"):
             for bet in driver.find_elements_by_class_name("open-option"):
                 result[bet_num] = ACTIVE_BET_TEMPLATE.copy()
-                result[bet_num]['time'] = bet.find_element_by_class_name("timer__text").text
-                result[bet_num]["profit_sum"] = bet.find_element_by_class_name("open-option__income").text
-                result[bet_num]["profit_perсents"] = bet.find_element_by_class_name("open-option__type").text
-                result[bet_num]["bet_sum"] = bet.find_element_by_class_name("open-option__bet").text
-                result[bet_num]["option"] = bet.find_element_by_class_name("open-option__asset").text
+
+                TIMER_PATH = "timer__text"
+                if self.wait(driver, By.CLASS_NAME, TIMER_PATH):
+                    result[bet_num]['time'] = bet.find_element_by_class_name(TIMER_PATH).text
+
+                PROFIT_VALUE_PATH = "open-option__income"
+                if self.wait(driver, By.XPATH, PROFIT_VALUE_PATH):
+                    result[bet_num]["profit_sum"] = driver.find_element_by_xpath(PROFIT_VALUE_PATH).text
+
+                PROFIT_PERCENTS_PATH = "open-option__type"
+                if self.wait(driver, By.CLASS_NAME, PROFIT_PERCENTS_PATH):
+                    result[bet_num]["profit_perсents"] = bet.find_element_by_class_name(PROFIT_PERCENTS_PATH).text
+
+                BET_SUM_PATH = "open-option__bet"
+                if self.wait(driver, By.CLASS_NAME, BET_SUM_PATH):
+                    result[bet_num]["bet_sum"] = bet.find_element_by_class_name(BET_SUM_PATH).text
+
+                OPTION_PATH = "open-option__asset"
+                if self.wait(driver, By.CLASS_NAME, OPTION_PATH):
+                    result[bet_num]["option"] = bet.find_element_by_class_name(OPTION_PATH).text
+
                 bet_num += 1
-        driver.find_element_by_class_name(HISTORY_BUTTON_PATH).click()
         print(result)
         return result
+
+    def add_autobet(self, user_id, option, exp_time, direction):
+        autobet = AUTOBET_TEMPLATE.copy()
+        autobet['signal_time'] = datetime.datetime.now()
+        autobet['option'] = option
+        autobet['exp_time'] = exp_time
+        autobet['direction'] = direction
+        if user_id not in AUTOBET_QUEUE:
+            AUTOBET_QUEUE[user_id] = []
+        AUTOBET_QUEUE[user_id].append(autobet)
+
+    def is_option(self, elem):
+        return elem in self.ALL_OPTIONS
+
+    def is_time(self, elem):
+        return elem in self.ALL_TIMES
+
+    def is_direction(self, elem):
+        return elem.lower().find('вниз') != -1 or elem.lower().find('верх') != -1
+
+async def autobet_inspector(bot):
+    while True:
+        bm = Binarium()
+        for user_id in AUTOBET_QUEUE.keys():
+            for autobet in AUTOBET_QUEUE[user_id]:
+                if not USERS[user_id].connected:
+                    USERS[user_id].connected = bm.connect(user_id)
+                #
+                bm.change_wallet(USERS[user_id].webdriver, USERS[user_id].autobet_params['real_wallet'])
+                bm.set_bet_sum(USERS[user_id].webdriver, USERS[user_id].autobet_params['bet_sum'])
+                bm.set_option(USERS[user_id].webdriver, autobet['option'])
+                bm.set_time(USERS[user_id].webdriver, autobet['exp_time'])
+                bm.bet(USERS[user_id].webdriver, autobet['direction'])
+                await asyncio.sleep(2)
+            await bot.send_message(user_id, prepare_bets_message(bm.get_active_bets(USERS[user_id].webdriver)))
+            print(user_id, AUTOBET_QUEUE[user_id])
+        AUTOBET_QUEUE.clear()
+        await asyncio.sleep(5)

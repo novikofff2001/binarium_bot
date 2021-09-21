@@ -25,5 +25,4 @@ ALL_OPTIONS_PATH = 'database/all_options.txt'
 ALL_TIMES_PATH = 'database/all_times.txt'
 ALL_BANNERS_PATH = 'database/all_banners.txt'
 #
-URL = 'https://binarium.global'
 WELCOME_MESSAGE = """Welcome to Binarium bot! Set login and password using /login and /pass"""
