@@ -1,47 +1,46 @@
 import asyncio
 import datetime
+import codecs
 
 from config import WEBDRIVER_PATH, ALL_OPTIONS_PATH, ALL_TIMES_PATH, ALL_BANNERS_PATH
 from log import log
 from user import USERS, USER_INFO_TEMPLATE
 #
 from selenium.common.exceptions import TimeoutException
-from selenium.common.exceptions import NoSuchElementException
 from selenium.common.exceptions import ElementClickInterceptedException
-from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium import webdriver
-import time
 
 URL = 'https://binarium.global'
 BROWSER_TIMEOUT = 6  # seconds
 WAIT_TIMEOUT = 3  # seconds
 
-
 ACTIVE_BET_TEMPLATE = {
     "timer": None,
     "profit_sum": None,
-    "profit_perсents": None,
+    "profit_percents": None,
     "bet_sum": None,
-    "option": None,
+    "option": None
 }
 
+
 AUTOBET_TEMPLATE = {'signal_time': None,
-                    'option': None,
-                    'exp_time': None,
-                    'direction': None}
+                   'option': None,
+                   'exp_time': None,
+                   'direction': None}
 
 AUTOBET_QUEUE = {}
+
 
 def prepare_info_message(result):
     msg = '=' * 30 + '\n'
     msg += "money:{0}\n".format(result['money'])
     msg += "real_wallet:{0}\n".format(result['real_wallet'])
     msg += "bet_sum:{0}\n".format(result['bet_sum'])
-    msg += "profit_perсents:{0}\n".format(result['profit_perсents'])
+    msg += "profit_percents:{0}\n".format(result['profit_percents'])
     msg += "profit_sum:{0}\n".format(result['profit_sum'])
     msg += "time:{0}\n".format(result['time'])
     if len(msg) == 0:
@@ -53,23 +52,27 @@ def prepare_bets_message(result):
     msg = ''
     bet_num = int(0)
     for key in result.keys():
-        print(key, result[key])
         bet_num += 1
         msg += '{:=^30}\n'.format("Active bet №{0}".format(bet_num))
         msg += 'Option: {0}\n'.format(result[key]['option'])
         msg += 'expiration time: {0}\n'.format(result[key]['timer'])
         msg += 'Sum of bet: {0}\n'.format(result[key]['bet_sum'])
         msg += 'Profit sum: {0}\n'.format(result[key]['profit_sum'])
-        msg += 'Profit percents: {0}\n'.format(result[key]['profit_perсents'])
+        msg += 'Profit percents: {0}\n'.format(result[key]['profit_percents'])
     if len(msg) == 0:
         msg = 'No Active bets'
     return msg
 
 
 class Binarium:
-    BANNERS_PATH = [elem.replace('\n', '') for elem in open(ALL_BANNERS_PATH, 'r')]
-    ALL_OPTIONS = [elem.replace('\n', '') for elem in open(ALL_OPTIONS_PATH, 'r')]
-    ALL_TIMES = [elem.replace('\n', '') for elem in open(ALL_TIMES_PATH, 'r')]
+    BANNERS_PATH = []
+    ALL_OPTIONS = []
+    ALL_TIMES = []
+
+    def __init__(self):
+        self.BANNERS_PATH = [_.replace('\n', '') for _ in codecs.open(ALL_BANNERS_PATH, 'r', 'cp1251').readlines()]
+        self.ALL_OPTIONS = [_.replace('\n', '') for _ in open(ALL_OPTIONS_PATH, 'r').readlines()]
+        self.ALL_TIMES = [_.replace('\n', '') for _ in open(ALL_TIMES_PATH, 'r').readlines()]
 
     def wait(self, driver, search_method, name, timeout=WAIT_TIMEOUT):
         try:
@@ -118,10 +121,10 @@ class Binarium:
             connected = 0
 
         if connected:
-            USERS[user_id].webdriver = driver
+            return driver
         else:
             driver.quit()
-        return connected
+            return None
 
     def close_banners(self, driver):
         for elem in self.BANNERS_PATH:
@@ -248,7 +251,7 @@ class Binarium:
 
         PROFIT_PERSENTS_PATH = "chart-profit__large"
         if self.wait(driver, By.CLASS_NAME, PROFIT_PERSENTS_PATH):
-            result["profit_perсents"] = driver.find_element_by_class_name(PROFIT_PERSENTS_PATH).text
+            result["profit_percents"] = driver.find_element_by_class_name(PROFIT_PERSENTS_PATH).text
 
         PROFIT_SUM_PATH = "chart-profit__small"
         if self.wait(driver, By.CLASS_NAME, PROFIT_SUM_PATH):
@@ -257,7 +260,6 @@ class Binarium:
         EXP_TIME_PATH = "//span[@a-test='currentExpiration']"
         if self.wait(driver, By.XPATH, EXP_TIME_PATH):
             result["time"] = driver.find_element_by_xpath(EXP_TIME_PATH).text
-        print(result)
         return result
 
     def get_active_bets(self, driver):
@@ -280,15 +282,15 @@ class Binarium:
 
                 TIMER_PATH = "timer__text"
                 if self.wait(driver, By.CLASS_NAME, TIMER_PATH):
-                    result[bet_num]['time'] = bet.find_element_by_class_name(TIMER_PATH).text
+                    result[bet_num]['timer'] = str(bet.find_element_by_class_name(TIMER_PATH).text).replace(':', '')
 
                 PROFIT_VALUE_PATH = "open-option__income"
-                if self.wait(driver, By.XPATH, PROFIT_VALUE_PATH):
-                    result[bet_num]["profit_sum"] = driver.find_element_by_xpath(PROFIT_VALUE_PATH).text
+                if self.wait(driver, By.CLASS_NAME, PROFIT_VALUE_PATH):
+                    result[bet_num]["profit_sum"] = bet.find_element_by_class_name(PROFIT_VALUE_PATH).text
 
                 PROFIT_PERCENTS_PATH = "open-option__type"
                 if self.wait(driver, By.CLASS_NAME, PROFIT_PERCENTS_PATH):
-                    result[bet_num]["profit_perсents"] = bet.find_element_by_class_name(PROFIT_PERCENTS_PATH).text
+                    result[bet_num]["profit_percents"] = bet.find_element_by_class_name(PROFIT_PERCENTS_PATH).text
 
                 BET_SUM_PATH = "open-option__bet"
                 if self.wait(driver, By.CLASS_NAME, BET_SUM_PATH):
@@ -299,7 +301,7 @@ class Binarium:
                     result[bet_num]["option"] = bet.find_element_by_class_name(OPTION_PATH).text
 
                 bet_num += 1
-        print(result)
+        self.close_banners(driver)
         return result
 
     def add_autobet(self, user_id, option, exp_time, direction):
@@ -313,7 +315,7 @@ class Binarium:
         AUTOBET_QUEUE[user_id].append(autobet)
 
     def is_option(self, elem):
-        return elem in self.ALL_OPTIONS
+        return elem.upper() in self.ALL_OPTIONS
 
     def is_time(self, elem):
         return elem in self.ALL_TIMES
@@ -321,21 +323,25 @@ class Binarium:
     def is_direction(self, elem):
         return elem.lower().find('вниз') != -1 or elem.lower().find('верх') != -1
 
+
 async def autobet_inspector(bot):
     while True:
         bm = Binarium()
-        for user_id in AUTOBET_QUEUE.keys():
-            for autobet in AUTOBET_QUEUE[user_id]:
-                if not USERS[user_id].connected:
-                    USERS[user_id].connected = bm.connect(user_id)
+        queue_copy = AUTOBET_QUEUE.copy()
+        for user_id in queue_copy.keys():
+            for autobet in queue_copy[user_id]:
+                if not USERS[user_id].webdriver:
+                    USERS[user_id].webdriver = bm.connect(user_id)
                 #
-                bm.change_wallet(USERS[user_id].webdriver, USERS[user_id].autobet_params['real_wallet'])
-                bm.set_bet_sum(USERS[user_id].webdriver, USERS[user_id].autobet_params['bet_sum'])
-                bm.set_option(USERS[user_id].webdriver, autobet['option'])
-                bm.set_time(USERS[user_id].webdriver, autobet['exp_time'])
-                bm.bet(USERS[user_id].webdriver, autobet['direction'])
+                bm.change_wallet(USERS[user_id].webdriver, USERS[user_id].autobet['real_wallet'])
+                success = bm.set_option(USERS[user_id].webdriver, autobet['option'])
+                if success:
+                    bm.set_time(USERS[user_id].webdriver, autobet['exp_time'])
+                    bm.set_bet_sum(USERS[user_id].webdriver, USERS[user_id].autobet['sum'])
+                    bm.bet(USERS[user_id].webdriver, autobet['direction'])
                 await asyncio.sleep(2)
+            AUTOBET_QUEUE[user_id] = [elem for elem in AUTOBET_QUEUE[user_id] if elem not in queue_copy[user_id]]
             await bot.send_message(user_id, prepare_bets_message(bm.get_active_bets(USERS[user_id].webdriver)))
-            print(user_id, AUTOBET_QUEUE[user_id])
-        AUTOBET_QUEUE.clear()
-        await asyncio.sleep(5)
+            if len(AUTOBET_QUEUE[user_id]) == 0:
+                AUTOBET_QUEUE.pop(user_id)
+        await asyncio.sleep(2)

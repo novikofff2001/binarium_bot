@@ -1,3 +1,4 @@
 //div[@a-test='largestProfitabilityClose']
+//div[@class='c-cookie-content']//button[1]
 lt-wrapper-close
-c-cookie-content
+--color-light

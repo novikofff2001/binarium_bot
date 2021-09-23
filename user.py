@@ -14,7 +14,7 @@ USER_INFO_TEMPLATE = {
     "real_wallet": None,
     "bet_sum": None,
     "option": None,
-    "profit_perсents": None,
+    "profit_percents": None,
     "profit_sum": None,
     "time": None,
 }
@@ -27,17 +27,16 @@ class Whitelist:
     #
     def __init__(self):
         self.load()
-        pass
 
     def load(self):
-        self.wl.clear()
         with open(USERS_PATH + self.FILENAME, 'r') as f:
-            self.wl.append(f.readline())
+            self.wl.update([int(user_id) for user_id in f.readlines()])
 
     def dump(self):
         with open(USERS_PATH + self.FILENAME, 'w') as f:
             for elem in self.wl:
-                f.write(elem)
+                if elem not in ADMINISTRATORS:
+                    f.write('{0}\n'.format(elem))
 
 
 class User:
@@ -45,11 +44,11 @@ class User:
     id = None
     login = None
     password = None
-    autobet_params = {'bet_sum': '60.0', 'real_wallet': False}
+
+    autobet = {'sum': '60.0', 'real_wallet': False}
 
     # additional info
     webdriver = None
-    connected = False
     last_activity = datetime.datetime(1970, 1, 1, 0, 0, 0)
 
     def __init__(self, user_id):
@@ -67,9 +66,5 @@ class User:
             data = pickle.load(f)
             self.login = data.login
             self.password = data.password
-            self.autobet_params = data.autobet_params
+            self.autobet = data.autobet
         log('USER_LOAD', self.id, 'Loaded successfully!')
-
-
-for user_id in Whitelist.wl:
-    USERS[user_id] = User(user_id)

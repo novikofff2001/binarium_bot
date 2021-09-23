@@ -1,0 +1,16 @@
+get_id - get your id and make a request to admin for using this bot. Use: /get_id
+get_binarium_info - Get info about your Binarium account. Include current option, exp. time, sum of bet, wallet type and balance
+get_login_info - Get info about your Binbot account. Include login, password, autobet settings
+login - Set your login to Binarium. Use: /login <login>
+pass - Set your password to Binarium. Use: /pass <password>
+connect - Connect to Binarium. Use: /connect
+wallet - Set wallet. Use: /wallet <real/demo>
+sum - Set sum of bet(min 60.0). Use: /sum <60.0/120>
+option - Set current option. Use: /option <EUR/USD>
+time - Set time of current expiration. Use: /time <00:00>
+bet - Do call or put bet. Use: /bet <up/down>
+close_banners - Close all ad banners on site manually. Use: /close_banners
+active_bets - Show active bets. If disconnected, bot will connect to Binarium
+autobet_wallet - Set wallet for autobetting. Use: /autobet_wallet <real/demo>
+autobet_sum  - Set sum of bet for autobetting(min 60.0). Use: /autobet_sum <60.0/120>
+autobet - Make autobet. Use: /autobet <option> <expiration_time> <call/put>
