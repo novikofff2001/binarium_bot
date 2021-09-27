@@ -8,6 +8,7 @@ from user import USERS, USER_INFO_TEMPLATE
 #
 from selenium.common.exceptions import TimeoutException
 from selenium.common.exceptions import ElementClickInterceptedException
+from selenium.common.exceptions import ElementNotInteractableException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
@@ -15,8 +16,9 @@ from selenium.webdriver.common.keys import Keys
 from selenium import webdriver
 
 URL = 'https://binarium.global'
-BROWSER_TIMEOUT = 6  # seconds
-WAIT_TIMEOUT = 3  # seconds
+BROWSER_TIMEOUT = 10  # seconds
+ELEM_TIMEOUT = 3  # seconds
+BETS_LIMIT = 4
 
 ACTIVE_BET_TEMPLATE = {
     "timer": None,
@@ -26,11 +28,10 @@ ACTIVE_BET_TEMPLATE = {
     "option": None
 }
 
-
 AUTOBET_TEMPLATE = {'signal_time': None,
-                   'option': None,
-                   'exp_time': None,
-                   'direction': None}
+                    'option': None,
+                    'exp_time': None,
+                    'direction': None}
 
 AUTOBET_QUEUE = {}
 
@@ -74,7 +75,7 @@ class Binarium:
         self.ALL_OPTIONS = [_.replace('\n', '') for _ in open(ALL_OPTIONS_PATH, 'r').readlines()]
         self.ALL_TIMES = [_.replace('\n', '') for _ in open(ALL_TIMES_PATH, 'r').readlines()]
 
-    def wait(self, driver, search_method, name, timeout=WAIT_TIMEOUT):
+    def wait(self, driver, search_method, name, timeout=ELEM_TIMEOUT):
         try:
             element_present = EC.presence_of_element_located((search_method, name))
             WebDriverWait(driver, timeout).until(element_present)
@@ -120,11 +121,21 @@ class Binarium:
         else:
             connected = 0
 
+        USER_MENU_PATH = "user-menu-account"
+        if not self.wait(driver, By.CLASS_NAME, USER_MENU_PATH, BROWSER_TIMEOUT):
+            connected = 0
+
         if connected:
             return driver
         else:
+            self.disconnect(driver)
+
+    def disconnect(self, driver):
+        try:
             driver.quit()
-            return None
+            driver = None
+        except:
+            pass
 
     def close_banners(self, driver):
         for elem in self.BANNERS_PATH:
@@ -190,6 +201,8 @@ class Binarium:
                         return 1
                 except ElementClickInterceptedException:
                     self.close_banners(driver)
+                except ElementNotInteractableException:
+                    return 0
         #                   webdriver.find_element_by_xpath(CURRENT_EXPIRATION_PATH).click()
         return 0
 
@@ -342,6 +355,10 @@ async def autobet_inspector(bot):
                 await asyncio.sleep(2)
             AUTOBET_QUEUE[user_id] = [elem for elem in AUTOBET_QUEUE[user_id] if elem not in queue_copy[user_id]]
             await bot.send_message(user_id, prepare_bets_message(bm.get_active_bets(USERS[user_id].webdriver)))
+            if len(AUTOBET_QUEUE[user_id]) >= BETS_LIMIT:
+                msg = "Bets limit({}) exceeded. Queue removed to prevent money leak".format(BETS_LIMIT)
+                await bot.send_message(user_id, msg)
+                AUTOBET_QUEUE.pop(user_id)
             if len(AUTOBET_QUEUE[user_id]) == 0:
                 AUTOBET_QUEUE.pop(user_id)
         await asyncio.sleep(2)

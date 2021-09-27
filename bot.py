@@ -63,6 +63,8 @@ async def command_get_login_info(message):
     else:
         ans += "\nInput /login <login> and /pass <pass>"
     await bot.send_message(message.from_user.id, ans)
+    log(command_get_login_info.__name__, message.from_user.id, "Got Login Info")
+    pass
 
 
 @dp.message_handler(commands=['autobet_sum'])
@@ -83,10 +85,10 @@ async def set_autobet_sum(message):
 async def set_autobet_wallet(message):
     wallet = USERS[message.from_user.id].autobet['real_wallet']
     USERS[message.from_user.id].autobet['real_wallet'] = not wallet
+    ans = "Choosed {} wallet".format("Real" if USERS[message.from_user.id].autobet['real_wallet'] else "Demo")
+    await bot.send_message(message.from_user.id, ans)
+    log(set_autobet_wallet.__name__, message.from_user.id, ans)
     USERS[message.from_user.id].dump()
-    await bot.send_message(message.from_user.id, "Choosed {0} wallet".format(
-        "Real" if USERS[user_id].autobet['real_wallet']
-        else "Demo"))
     pass
 
 
@@ -105,8 +107,9 @@ async def command_autobet(message):
             direction = elem
     if option and exp_time and direction:
         bm.add_autobet(message.from_user.id, option, exp_time, direction)
-        log(command_autobet.__name__, "Autobet received", option+', '+exp_time+', '+direction)
-    await bot.send_message(message.from_user.id, msg)
+        msg = "Autobet received: {}, {}, {}".format(option, exp_time, direction)
+        await bot.send_message(message.from_user.id, msg)
+    log(command_autobet.__name__, message.from_user.id, msg)
     pass
 
 
@@ -118,7 +121,9 @@ async def set_login(message):
     msg = str(message.text).replace('/login', '').replace(' ', '')
     if msg:
         USERS[message.from_user.id].login = msg
-    await bot.send_message(message.from_user.id, "Login: {0}".format(msg) if msg else "Forgot login...")
+    ans = "Login: {0}".format(msg) if msg else "Forgot login..."
+    await bot.send_message(message.from_user.id, ans)
+    log(set_login.__name__, message.from_user.id, ans)
     pass
 
 
@@ -128,7 +133,9 @@ async def set_password(message):
     USERS[message.from_user.id].password = msg
     if USERS[message.from_user.id].login and USERS[message.from_user.id].password:
         USERS[message.from_user.id].dump()
-    await bot.send_message(message.from_user.id, "Password: {0}".format(msg) if msg else "Forgot pass...")
+    ans = "Password: {0}".format(msg) if msg else "Forgot pass..."
+    await bot.send_message(message.from_user.id, ans)
+    log(set_password.__name__, message.from_user.id, ans)
     pass
 
 
@@ -138,16 +145,32 @@ async def set_password(message):
 async def command_connect(message):
     bm = Binarium()
     ans = "Connected successfully!"
-    try:
-        USERS[message.from_user.id].webdriver = bm.connect(message.from_user.id)
-    except Exception as e:
-        ans = e
+    if not USERS[message.from_user.id].webdriver:
+        try:
+            USERS[message.from_user.id].webdriver = bm.connect(message.from_user.id)
+        except Exception as e:
+            ans = e
+    else:
+        ans = "Already connected"
     await bot.send_message(message.from_user.id, ans)
+    log(command_connect.__name__, message.from_user.id, ans)
+    pass
+
+
+@dp.message_handler(commands=['disconnect'])
+async def command_disconnect(message):
+    bm = Binarium()
+    bm.disconnect(USERS[message.from_user.id].webdriver)
+    ans = "Disconnected successfully!"
+    await bot.send_message(message.from_user.id, ans)
+    log(command_disconnect.__name__, message.from_user.id, ans)
     pass
 
 
 @dp.message_handler(lambda message: not USERS[message.from_user.id].webdriver)
 async def any_message_from_disconnected_user(message):
+    ans = "User not connected. Transferring to info function..."
+    log(command_get_login_info.__name__, message.from_user.id, ans)
     await command_get_login_info(message)
     pass
 
@@ -157,7 +180,9 @@ async def set_option(message):
     bm = Binarium()
     msg = str(message.text).replace('/setoption ', '')
     bm.set_option(USERS[message.from_user.id].webdriver, msg)
-    await bot.send_message(message.from_user.id, msg)
+    ans = "Set Option: {0}".format(msg)
+    await bot.send_message(message.from_user.id, ans)
+    log(set_option.__name__, message.from_user.id, ans)
     pass
 
 
@@ -174,10 +199,12 @@ async def close_banners(message):
 @dp.message_handler(commands=['wallet'])
 async def set_wallet(message):
     bm = Binarium()
-    msg = str(message.text).replace('/wallet ', '')
-    choise = random.randint(0, 1)
-    bm.change_wallet(USERS[message.from_user.id].webdriver, choise)
-    await bot.send_message(message.from_user.id, msg)
+    msg = str(message.text).replace('/wallet', '').replace(' ', '').lower()
+    real_wallet = msg.find('real') != -1
+    bm.change_wallet(USERS[message.from_user.id].webdriver, real_wallet)
+    ans = "Set Wallet: {0}".format(msg)
+    await bot.send_message(message.from_user.id, ans)
+    log(set_wallet.__name__, message.from_user.id, ans)
     pass
 
 
@@ -185,9 +212,11 @@ async def set_wallet(message):
 @dp.message_handler(commands=['time'])
 async def set_time(message):
     bm = Binarium()
-    msg = str(message.text).replace('/time ', '')
+    msg = str(message.text).replace('/time', '').replace(' ', '')
     bm.set_time(USERS[message.from_user.id].webdriver, msg)
-    await bot.send_message(message.from_user.id, msg)
+    ans = "Set Time: {0}".format(msg)
+    await bot.send_message(message.from_user.id, ans)
+    log(set_time.__name__, message.from_user.id, ans)
     pass
 
 
@@ -195,9 +224,11 @@ async def set_time(message):
 @dp.message_handler(commands=['sum'])
 async def set_sum(message):
     bm = Binarium()
-    msg = str(message.text).replace('/sum ', '')
+    msg = str(message.text).replace('/sum', '').replace(' ', '')
     bm.set_bet_sum(USERS[message.from_user.id].webdriver, msg)
-    await bot.send_message(message.from_user.id, msg)
+    ans = "Set Sum: {0}".format(msg)
+    await bot.send_message(message.from_user.id, ans)
+    log(set_sum.__name__, message.from_user.id, ans)
     pass
 
 
@@ -205,9 +236,11 @@ async def set_sum(message):
 @dp.message_handler(commands=['bet'])
 async def do_bet(message):
     bm = Binarium()
-    msg = str(message.text).replace('/bet ', '')
+    msg = str(message.text).replace('/bet', '').replace(' ', '')
     bm.bet(USERS[message.from_user.id].webdriver, msg)
-    await bot.send_message(message.from_user.id, "Bet {0}".format(msg))
+    ans = "Bet {0}".format(msg)
+    await bot.send_message(message.from_user.id, ans)
+    log(do_bet.__name__, message.from_user.id, ans)
     pass
 
 
@@ -218,6 +251,7 @@ async def get_active_bets(message):
         USERS[message.from_user.id].webdriver = bm.connect(message.from_user.id)
     msg = prepare_bets_message(bm.get_active_bets(USERS[message.from_user.id].webdriver))
     await bot.send_message(message.from_user.id, msg)
+    log(get_active_bets.__name__, message.from_user.id, "Got Active Bets")
     pass
 
 
@@ -226,6 +260,7 @@ async def command_get_binarium_info(message):
     bm = Binarium()
     msg = prepare_info_message(bm.collect_info(USERS[message.from_user.id].webdriver))
     await bot.send_message(message.from_user.id, msg)
+    log(command_get_binarium_info.__name__, message.from_user.id, "Got Binarium Account Info")
     pass
 
 
