@@ -4,7 +4,7 @@ get_login_info - Get info about your Binbot account. Include login, password, au
 login - Set your login to Binarium. Use: /login <login>
 pass - Set your password to Binarium. Use: /pass <password>
 connect - Connect to Binarium. Use: /connect
-disconnect - Close Connection toBinarium. Use: /disconnect
+disconnect - Close Connection to Binarium. Use: /disconnect
 wallet - Set wallet. Use: /wallet <real/demo>
 sum - Set sum of bet(min 60.0). Use: /sum <60.0/120>
 option - Set current option. Use: /option <EUR/USD>

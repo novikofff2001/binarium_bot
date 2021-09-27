@@ -38,12 +38,12 @@ AUTOBET_QUEUE = {}
 
 def prepare_info_message(result):
     msg = '=' * 30 + '\n'
-    msg += "money:{0}\n".format(result['money'])
-    msg += "real_wallet:{0}\n".format(result['real_wallet'])
-    msg += "bet_sum:{0}\n".format(result['bet_sum'])
-    msg += "profit_percents:{0}\n".format(result['profit_percents'])
-    msg += "profit_sum:{0}\n".format(result['profit_sum'])
-    msg += "time:{0}\n".format(result['time'])
+    msg += "Money: {0}\n".format(result['money'])
+    msg += "Wallet: {0}\n".format(result['real_wallet'])
+    msg += "Sum Of Bet: {0}\n".format(result['bet_sum'])
+    msg += "Profit Percents:{0}\n".format(result['profit_percents'])
+    msg += "Profit Sum:{0}\n".format(result['profit_sum'])
+    msg += "Expiration Time:{0}\n".format(result['time'])
     if len(msg) == 0:
         msg = 'No Info'
     return msg
@@ -155,14 +155,15 @@ class Binarium:
             if option == CURRENT_OPTION_NAME:
                 return 1
         CHART_TAB_PATH = 'chart-tab__toggle'
-        BUTTON = "//div[@a-test='asset-{0}-{1}']".format('turbo' if turbo else 'binary', option)
         for _ in range(2):
             try:
-                if self.wait(driver, By.CLASS_NAME, CHART_TAB_PATH):
-                    driver.find_element_by_class_name(CHART_TAB_PATH).click()
-                if self.wait(driver, By.XPATH, BUTTON):
-                    driver.find_element_by_xpath(BUTTON).click()
-                    return 1
+                    if self.wait(driver, By.CLASS_NAME, CHART_TAB_PATH):
+                        driver.find_element_by_class_name(CHART_TAB_PATH).click()
+                    for option_button in [option, option + ' (OTC)']:
+                        BUTTON = "//div[@a-test='asset-{0}-{1}']".format('turbo' if turbo else 'binary', option_button)
+                        if self.wait(driver, By.XPATH, BUTTON):
+                            driver.find_element_by_xpath(BUTTON).click()
+                            return 1
             except ElementClickInterceptedException:
                 self.close_banners(driver)
         return 0
