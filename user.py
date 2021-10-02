@@ -3,6 +3,7 @@ import os.path
 import pickle
 #
 from config import USERS_PATH, ADMINISTRATORS
+from selenium.common.exceptions import WebDriverException
 from log import log
 
 #
@@ -58,7 +59,10 @@ class User:
 
     def dump(self):
         with open(USERS_PATH + '%d.pkl' % self.id, 'wb') as f:
+            driver = self.webdriver
+            self.webdriver = None
             pickle.dump(self, f)
+            self.webdriver = driver
             log('USER_DUMP', self.id, 'Dumped successfully!')
 
     def load(self, user_id):
@@ -68,3 +72,11 @@ class User:
             self.password = data.password
             self.autobet = data.autobet
         log('USER_LOAD', self.id, 'Loaded successfully!')
+
+    def alive(self):
+        try:
+            log("ALIVE_CHECK", self.id, "Browser Alive: {}".format(self.webdriver.session_id))
+            return 1
+        except (WebDriverException, AttributeError) as e:
+            log("ALIVE_CHECK", self.id, "Browser Dead: {}".format(e))
+            return 0

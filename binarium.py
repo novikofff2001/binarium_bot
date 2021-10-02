@@ -9,6 +9,7 @@ from user import USERS, USER_INFO_TEMPLATE
 from selenium.common.exceptions import TimeoutException
 from selenium.common.exceptions import ElementClickInterceptedException
 from selenium.common.exceptions import ElementNotInteractableException
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
@@ -37,9 +38,9 @@ AUTOBET_QUEUE = {}
 
 
 def prepare_info_message(result):
-    msg = '=' * 30 + '\n'
+    msg = '/get_binarium_info\n/active_bets\n'
+    msg += "{:=^30}\n".format(' ' + result['real_wallet'] + ' ')
     msg += "Money: {0}\n".format(result['money'])
-    msg += "Wallet: {0}\n".format(result['real_wallet'])
     msg += "Sum Of Bet: {0}\n".format(result['bet_sum'])
     msg += "Profit Percents:{0}\n".format(result['profit_percents'])
     msg += "Profit Sum:{0}\n".format(result['profit_sum'])
@@ -50,7 +51,7 @@ def prepare_info_message(result):
 
 
 def prepare_bets_message(result):
-    msg = ''
+    msg = '/get_binarium_info\n/active_bets\n'
     bet_num = int(0)
     for key in result.keys():
         bet_num += 1
@@ -60,8 +61,8 @@ def prepare_bets_message(result):
         msg += 'Sum of bet: {0}\n'.format(result[key]['bet_sum'])
         msg += 'Profit sum: {0}\n'.format(result[key]['profit_sum'])
         msg += 'Profit percents: {0}\n'.format(result[key]['profit_percents'])
-    if len(msg) == 0:
-        msg = 'No Active bets'
+    if len(result.keys()) == 0:
+        msg += 'No Active bets'
     return msg
 
 
@@ -69,6 +70,7 @@ class Binarium:
     BANNERS_PATH = []
     ALL_OPTIONS = []
     ALL_TIMES = []
+    CHROME_OPTIONS = ['--log-level=3', '--mute-audio']
 
     def __init__(self):
         self.BANNERS_PATH = [_.replace('\n', '') for _ in codecs.open(ALL_BANNERS_PATH, 'r', 'cp1251').readlines()]
@@ -83,9 +85,12 @@ class Binarium:
         except TimeoutException:
             return 0
 
-    def connect(self, user_id):
-        assert USERS[user_id].login and USERS[user_id].password
-        driver = webdriver.Chrome(WEBDRIVER_PATH)
+    def connect(self, user):
+        assert user.login and user.password, "No login or/and password!"
+        options = webdriver.ChromeOptions()
+        for option in self.CHROME_OPTIONS:
+            options.add_argument(option)
+        driver = webdriver.Chrome(executable_path=WEBDRIVER_PATH, chrome_options=options)
         driver.get(URL)
 
         connected = 1
@@ -103,14 +108,14 @@ class Binarium:
         # login input
         LOGIN_FIELD_PATH = "//input[@formcontrolname='email']"
         if self.wait(driver, By.XPATH, LOGIN_FIELD_PATH, BROWSER_TIMEOUT):
-            driver.find_element_by_xpath(LOGIN_FIELD_PATH).send_keys(USERS[user_id].login)
+            driver.find_element_by_xpath(LOGIN_FIELD_PATH).send_keys(user.login)
         else:
             connected = 0
 
         # password input
         PASSWORD_FIELD_PATH = "//input[@formcontrolname='password']"
         if self.wait(driver, By.XPATH, PASSWORD_FIELD_PATH, BROWSER_TIMEOUT):
-            driver.find_element_by_xpath(PASSWORD_FIELD_PATH).send_keys(USERS[user_id].password)
+            driver.find_element_by_xpath(PASSWORD_FIELD_PATH).send_keys(user.password)
         else:
             connected = 0
 
@@ -125,17 +130,15 @@ class Binarium:
         if not self.wait(driver, By.CLASS_NAME, USER_MENU_PATH, BROWSER_TIMEOUT):
             connected = 0
 
-        if connected:
-            return driver
-        else:
+        if not connected:
             self.disconnect(driver)
 
-    def disconnect(self, driver):
-        try:
-            driver.quit()
-            driver = None
-        except:
-            pass
+        user.webdriver = driver
+        return connected
+
+    def disconnect(self, user_id):
+        if USERS[user_id].alive():
+            USERS[user_id].webdriver.quit()
 
     def close_banners(self, driver):
         for elem in self.BANNERS_PATH:
@@ -204,14 +207,13 @@ class Binarium:
                     self.close_banners(driver)
                 except ElementNotInteractableException:
                     return 0
-        #                   webdriver.find_element_by_xpath(CURRENT_EXPIRATION_PATH).click()
         return 0
 
-    def set_bet_sum(self, driver, sum):
+    def set_bet_sum(self, driver, bet_sum):
         SUM_FIELD_PATH = "//textarea[@a-test='chartBetValue']"
         if self.wait(driver, By.XPATH, SUM_FIELD_PATH):
             SUM_FIELD = str(driver.find_element_by_xpath(SUM_FIELD_PATH).text)
-            if SUM_FIELD == sum:
+            if SUM_FIELD == bet_sum:
                 return 1
         #
         for _ in range(2):
@@ -221,21 +223,23 @@ class Binarium:
                     SUM_FIELD.click()
                     SUM_FIELD.send_keys(Keys.CONTROL + "a")
                     SUM_FIELD.send_keys(Keys.BACK_SPACE)
-                    SUM_FIELD.send_keys(sum)
+                    SUM_FIELD.send_keys(bet_sum)
                     SUM_FIELD.send_keys(Keys.ENTER)
                     return 1
             except ElementClickInterceptedException:
                 self.close_banners(driver)
         return 0
 
-    def bet(self, driver, msg=str()):
+    def bet(self, driver, msg):
         is_up = msg.lower().find('верх') != -1 and msg.lower().find('вниз') == -1
         DOWN_BUTTON_PATH = "//div[@atest='buttonPut']"
         UP_BUTTON_PATH = "//div[@atest='buttonCall']"
+        FORECAST_PATH = "forecast"
         for _ in range(2):
             try:
                 driver.find_element_by_xpath(UP_BUTTON_PATH if is_up else DOWN_BUTTON_PATH).click()
-                return 1
+                if self.wait(driver, By.CLASS_NAME, FORECAST_PATH):
+                    return 1
             except ElementClickInterceptedException:
                 self.close_banners(driver)
         return 0
@@ -344,9 +348,8 @@ async def autobet_inspector(bot):
         queue_copy = AUTOBET_QUEUE.copy()
         for user_id in queue_copy.keys():
             for autobet in queue_copy[user_id]:
-                if not USERS[user_id].webdriver:
-                    USERS[user_id].webdriver = bm.connect(user_id)
-                #
+                if not USERS[user_id].alive():
+                    bm.connect(USERS[user_id])
                 bm.change_wallet(USERS[user_id].webdriver, USERS[user_id].autobet['real_wallet'])
                 success = bm.set_option(USERS[user_id].webdriver, autobet['option'])
                 if success:
@@ -356,10 +359,6 @@ async def autobet_inspector(bot):
                 await asyncio.sleep(2)
             AUTOBET_QUEUE[user_id] = [elem for elem in AUTOBET_QUEUE[user_id] if elem not in queue_copy[user_id]]
             await bot.send_message(user_id, prepare_bets_message(bm.get_active_bets(USERS[user_id].webdriver)))
-            if len(AUTOBET_QUEUE[user_id]) >= BETS_LIMIT:
-                msg = "Bets limit({}) exceeded. Queue removed to prevent money leak".format(BETS_LIMIT)
-                await bot.send_message(user_id, msg)
-                AUTOBET_QUEUE.pop(user_id)
             if len(AUTOBET_QUEUE[user_id]) == 0:
                 AUTOBET_QUEUE.pop(user_id)
         await asyncio.sleep(2)

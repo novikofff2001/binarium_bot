@@ -78,6 +78,7 @@ async def set_autobet_sum(message):
     except ValueError:
         msg = "Input correct value(ex. 60.0, 120) and try again"
     await bot.send_message(message.from_user.id, msg)
+    log(set_autobet_sum.__name__, message.from_user.id, msg)
     pass
 
 
@@ -147,7 +148,7 @@ async def command_connect(message):
     ans = "Connected successfully!"
     if not USERS[message.from_user.id].webdriver:
         try:
-            USERS[message.from_user.id].webdriver = bm.connect(message.from_user.id)
+            bm.connect(USERS[message.from_user.id])
         except Exception as e:
             ans = e
     else:
@@ -160,7 +161,7 @@ async def command_connect(message):
 @dp.message_handler(commands=['disconnect'])
 async def command_disconnect(message):
     bm = Binarium()
-    bm.disconnect(USERS[message.from_user.id].webdriver)
+    bm.disconnect(message.from_user.id)
     ans = "Disconnected successfully!"
     await bot.send_message(message.from_user.id, ans)
     log(command_disconnect.__name__, message.from_user.id, ans)
@@ -180,7 +181,7 @@ async def set_option(message):
     bm = Binarium()
     msg = str(message.text).replace('/setoption ', '')
     bm.set_option(USERS[message.from_user.id].webdriver, msg)
-    ans = "Set Option: {0}".format(msg)
+    ans = "Set Option: {0}".format(msg if msg else 'Demo')
     await bot.send_message(message.from_user.id, ans)
     log(set_option.__name__, message.from_user.id, ans)
     pass
@@ -248,7 +249,7 @@ async def do_bet(message):
 async def get_active_bets(message):
     bm = Binarium()
     if not USERS[message.from_user.id].webdriver:
-        USERS[message.from_user.id].webdriver = bm.connect(message.from_user.id)
+        bm.connect(USERS[message.from_user.id])
     msg = prepare_bets_message(bm.get_active_bets(USERS[message.from_user.id].webdriver))
     await bot.send_message(message.from_user.id, msg)
     log(get_active_bets.__name__, message.from_user.id, "Got Active Bets")
