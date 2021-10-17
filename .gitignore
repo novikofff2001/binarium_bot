@@ -1,0 +1,10 @@
+# Directories
+users/
+.idea/
+__pycache__/
+
+# Files
+todo.txt
+token.txt
+admins.txt
+start_bot.bat
